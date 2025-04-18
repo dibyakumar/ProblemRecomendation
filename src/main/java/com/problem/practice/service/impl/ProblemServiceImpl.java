@@ -7,71 +7,67 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Queue;
-import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.stream.Collector;
 import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import com.problem.practice.entity.Problem;
-import com.problem.practice.entity.UniqueId;
-import com.problem.practice.entity.User;
 import com.problem.practice.exception.NotFoundException;
+import com.problem.practice.logic.IntervalCalculator;
 import com.problem.practice.payload.ProblemDto;
-import com.problem.practice.repository.UniqueIdRepository;
-import com.problem.practice.repository.UserRepository;
-import com.problem.practice.service.ProblemService;
+import com.problem.practice.repository.ProblemRepository;
+import com.problem.practice.util.ProjectUtility;
+import com.problem.practice.util.TypeOfProblem;
 
-import jakarta.servlet.http.HttpSession;
 
 @Service
-public class ProblemServiceImpl implements ProblemService{
-
-	@Autowired
-	private UniqueIdRepository idrepo;
+public class ProblemServiceImpl {
 	
 	@Autowired
-	private UserRepository urepo;
+	private ProblemRepository problemRepo;
 	
-	private  static Queue<Problem> scheduler = new LinkedList<>(); 
+	@Autowired
+	private ProjectUtility projectUtil;
+	
+	@Autowired
+	private IntervalCalculator intervalCalculator;
+	
+	private  Queue<Problem> scheduler = new LinkedList<>(); 
 	
 	private LocalDate processedDate;
 	
-	@Override
-	public String saveProb(ProblemDto problem, HttpSession sessionGeneration) {
+	public String saveProb(ProblemDto problem) {
 		
-		
-		User curruser =  getUser(sessionGeneration);
-		
+		String currentUserId = projectUtil.getCurrentUserId();
 		
 		Problem prob = new Problem();
 		prob.setProblemLink(problem.getLink());
-		prob.setProblemId(generateId()+"");
+		prob.setProblemId(projectUtil.generateId()+"");
 		prob.setInterval(problem.getReview());
 		prob.setReview(problem.getReview());
 		prob.setPracticeDate(LocalDate.now());
+		prob.setUserId(currentUserId);
+		prob.setEaseFactor(2.5); // ease factor
 		
-		List<Problem> problems = curruser.getProblems();
-		problems.add(prob); 
 		
-		urepo.save(curruser);
+		problemRepo.save(prob);
 		
 		return "Problem Saved !!";
 	}
 	
 	
 	// will schedule for practice
-	private void scheduleProblem(User user) {
-		List<Problem> problems = user.getProblems();
+	private void scheduleProblem(String userId) {
+		List<Problem> problems = problemRepo.findByUserId(userId);
 																					// it will create collection according to the passed argument
 		scheduler = problems.stream().filter(prob->prob.getInterval()==0).collect(Collectors.toCollection(LinkedList::new));
 	}
 	
 	// will update the interval according to the day it practiced 
-	private void processProblem(User user) {
+	private void processProblem(String userId) {
 		processedDate = LocalDate.now();
-		List<Problem> problems = user.getProblems();
+		List<Problem> problems = problemRepo.findByUserId(userId);
 		for(Problem prob : problems) {
 			if(prob.getInterval() != 0 ) {
 				// this will give the no of days between practiceDate and current date
@@ -84,40 +80,19 @@ public class ProblemServiceImpl implements ProblemService{
 		}
 	}
 	
-	public User getUser(HttpSession session) {
-		return urepo.findById(session.getAttribute("user").toString()).get(); 
-	}
-	
-	private Integer generateId() {
-		Optional<UniqueId> uniqueId = idrepo.findById("123");
-		if(uniqueId.isEmpty()) {
-			UniqueId id = new UniqueId();
-			id.setId("123");
-			id.setCounterValue(1);
-			idrepo.save(id);
-			return 1;
-		}
-		
-		Integer id = uniqueId.get().getCounterValue()+1;
-		
-		uniqueId.get().setCounterValue(id);
-		idrepo.save(uniqueId.get());
-		
-		return id;
-		
-	}
 
 
-	@Override
-	public ProblemDto getRecomendation(HttpSession sessionGeneration) {
-		User curruser =  getUser(sessionGeneration);
+
+
+	public ProblemDto getRecomendation() {
+		String currentUserId = projectUtil.getCurrentUserId();
 		
 		//schedule and process  once in a day 
 		if(processedDate==null || processedDate.isBefore(LocalDate.now())) {
 			// update interval
-			processProblem(curruser);
+			processProblem(currentUserId);
 			//schedule problem according to the interval
-			scheduleProblem(curruser);
+			scheduleProblem(currentUserId);
 		}
 		
 		
@@ -125,87 +100,73 @@ public class ProblemServiceImpl implements ProblemService{
 			throw new NotFoundException("No Problems Scheduled For Today !!");
 		
 		Problem problem = scheduler.poll();
-		ProblemDto dto = new ProblemDto(Integer.parseInt(problem.getProblemId()),problem.getProblemLink(),problem.getReview());
+		List<ProblemDto> dto = processProblems(List.of(problem));
 		
 		//update the practice date 
-		List<Problem> problems = curruser.getProblems();
-		for(Problem prob : problems) {
-			if(prob.getProblemId() == problem.getProblemId()) {
-				prob.setPracticeDate(processedDate);
-				break;
-			}
-		}
-		urepo.save(curruser);
-		return dto;
+		problem.setPracticeDate(processedDate);
+		problemRepo.save(problem);
+		return  dto.get(0);
 	}
 
 
-	@Override
-	public String reviewProb(Integer probId, Integer review, HttpSession sessionGeneration) {
-		User currUser =  getUser(sessionGeneration);
-		
-		List<Problem> problems = currUser.getProblems();
-		Optional<Problem> findAny = problems.stream().filter(prob->Integer.parseInt(prob.getProblemId())==probId).findAny();
-		if(findAny.isEmpty()) {
+	public String reviewProb(Integer probId, Integer review) {
+		Optional<Problem> problems = problemRepo.findById(probId.toString());
+		if(problems.isEmpty()) {
 			throw new NotFoundException("Problem Not Found with Id : "+probId);
 		}
 		
-		findAny.get().setReview(review);
-		if(review>3)
-		findAny.get().setInterval(review+findAny.get().getInterval());
-		else
-			findAny.get().setInterval(review);
-		//update user
-		urepo.save(currUser);
+		
+		int calculateNewInterval = intervalCalculator.calculateNewInterval(review, problems.get());
+		
+		problems.get().setInterval(calculateNewInterval);
+		
+		// dont update the review before calculating the interval 
+		problems.get().setReview(review);
+		
+		//update prob
+		problemRepo.save(problems.get());
 		
 		return "Review Updated !!";
 	}
 
 
-	@Override
-	public List<ProblemDto> getStruggleProblem(HttpSession sessionGeneration) {
-		User curruser =  getUser(sessionGeneration);
-		List<Problem> problems = curruser.getProblems();
-		List<ProblemDto> dtos = new ArrayList<>();
-		for(Problem prob : problems) {
-			if(prob.getReview()<=3) {
-				ProblemDto dto = new ProblemDto(Integer.parseInt(prob.getProblemId()), prob.getProblemLink(), prob.getReview());
-				dtos.add(dto);
-			}
-		}
+	public List<ProblemDto> getAllProblem(String type) {
 		
-		return dtos;
-	}
-
-
-	@Override
-	public List<ProblemDto> getEasyProblem(HttpSession sessionGeneration) {
-		User curruser =  getUser(sessionGeneration);
-		List<Problem> problems = curruser.getProblems();
-		List<ProblemDto> dtos = new ArrayList<>();
-		for(Problem prob : problems) {
-			if(prob.getReview()>3) {
-				ProblemDto dto = new ProblemDto(Integer.parseInt(prob.getProblemId()), prob.getProblemLink(), prob.getReview());
-				dtos.add(dto);
-			}
-		}
+		String currentUserId = projectUtil.getCurrentUserId();
+		// process all problems for the user
+		processProblem(currentUserId);
 		
-		return dtos;
-	}
-
-
-	@Override
-	public List<ProblemDto> getAllProblem(HttpSession sessionGeneration) {
-		User curruser =  getUser(sessionGeneration);
-		List<Problem> problems = curruser.getProblems();
-		List<ProblemDto> dtos = new ArrayList<>();
-		for(Problem prob : problems) {
-			
-				ProblemDto dto = new ProblemDto(Integer.parseInt(prob.getProblemId()), prob.getProblemLink(), prob.getReview());
-				dtos.add(dto);
+		List<Problem> probByUserId = problemRepo.findByUserId(currentUserId);
+		
+		
+		if(TypeOfProblem.EASY.toString().equals(type.toUpperCase())) {
+		
+			List<Problem> allEasyProblems = probByUserId.stream().filter(prob->prob.getReview()>3).collect(Collectors.toList());
+			return processProblems(allEasyProblems);
 			
 		}
 		
+		else if(TypeOfProblem.STRUGGLED.toString().equals(type.toUpperCase())){
+			List<Problem> allHardProblems = probByUserId.stream().filter(prob->prob.getReview()<=3).collect(Collectors.toList());
+			return processProblems(allHardProblems);
+		}
+		
+		else {
+			return processProblems(probByUserId);
+		}
+		
+	}
+	
+	private List<ProblemDto> processProblems(List<Problem> problems){
+		List<ProblemDto> dtos = new ArrayList<>();
+		for(Problem prob : problems) {
+				long dueOn = prob.getInterval() -  ChronoUnit.DAYS.between(prob.getPracticeDate(), processedDate);
+				LocalDate dueDate = LocalDate.now().plusDays(dueOn);
+				ProblemDto dto = ProblemDto.builder().id(Integer.parseInt(prob.getProblemId())).link(prob.getProblemLink()).review(prob.getReview())
+						.dateOfLastPractice(prob.getPracticeDate()).dueOn(dueDate).build();
+				dtos.add(dto);
+			
+		}
 		return dtos;
 	}
 

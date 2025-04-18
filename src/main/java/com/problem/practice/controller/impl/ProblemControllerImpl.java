@@ -13,72 +13,47 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.problem.practice.controller.ProblemController;
-import com.problem.practice.exception.ProblemRecomendWebAppException;
 import com.problem.practice.payload.ProblemDto;
-import com.problem.practice.service.ProblemService;
-
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpSession;
+import com.problem.practice.service.impl.ProblemServiceImpl;
 
 @RestController
 @RequestMapping("/prob")
 public class ProblemControllerImpl implements ProblemController{
 
 	@Autowired
-	private ProblemService probService;
+	private ProblemServiceImpl probService;
 	
 	@PostMapping("/add")
 	@Override
-	public ResponseEntity<String> addProblem(@RequestBody ProblemDto problem, HttpServletRequest request) {
-		HttpSession sessionGeneration = sessionGeneration(request);
-		
-		return new ResponseEntity<String>(probService.saveProb(problem,sessionGeneration),HttpStatus.OK);
+	public ResponseEntity<String> addProblem(@RequestBody ProblemDto problem) {
+		return new ResponseEntity<String>(probService.saveProb(problem),HttpStatus.OK);
 	}
 
 	@GetMapping("/getProblem")
 	@Override
-	public ResponseEntity<ProblemDto> getRecomendation(HttpServletRequest request) {
-		HttpSession sessionGeneration = sessionGeneration(request);
-		
-		return new ResponseEntity<ProblemDto>(probService.getRecomendation(sessionGeneration),HttpStatus.OK);
+	public ResponseEntity<ProblemDto> getRecomendation() {
+		return new ResponseEntity<ProblemDto>(probService.getRecomendation(),HttpStatus.OK);
 	}
 	
 	@PostMapping("/review")
 	@Override
-	public ResponseEntity<String> reviewProb(@RequestParam Integer probId,@RequestParam Integer review, HttpServletRequest request) {
-		HttpSession sessionGeneration = sessionGeneration(request);
-		return new ResponseEntity<String>(probService.reviewProb(probId,review,sessionGeneration),HttpStatus.OK);
+	public ResponseEntity<String> reviewProb(@RequestParam Integer probId,@RequestParam Integer review) {
+		return new ResponseEntity<String>(probService.reviewProb(probId,review),HttpStatus.OK);
 	}
 
-	@GetMapping("/getSturggleProb")
+	/*
+	 * TypeOfProblem :
+	 * 
+	 * ALL
+	 * STRUGGLED
+	 * EASY
+	*/
+	@GetMapping("/problem")
 	@Override
-	public ResponseEntity<List<ProblemDto>> getProbOnWhichUserStruggle(HttpServletRequest request) {
-		HttpSession sessionGeneration = sessionGeneration(request);
-		return new ResponseEntity<List<ProblemDto>>(probService.getStruggleProblem(sessionGeneration),HttpStatus.OK);
-	}
-
-	@GetMapping("/getEasyProb")
-	@Override
-	public ResponseEntity<List<ProblemDto>> getProbWhichSolvedEasily(HttpServletRequest request) {
-		HttpSession sessionGeneration = sessionGeneration(request);
-		return new ResponseEntity<List<ProblemDto>>(probService.getEasyProblem(sessionGeneration),HttpStatus.OK);
-	}
-
-	@GetMapping("/getAllProblem")
-	@Override
-	public ResponseEntity<List<ProblemDto>> getAllProblem(HttpServletRequest request) {
-		HttpSession sessionGeneration = sessionGeneration(request);
-		return new ResponseEntity<List<ProblemDto>>(probService.getAllProblem(sessionGeneration),HttpStatus.OK);
+	public ResponseEntity<List<ProblemDto>> getAllProblem(@RequestParam String type) {
+		return new ResponseEntity<List<ProblemDto>>(probService.getAllProblem(type),HttpStatus.OK);
 	}
 	
-	public HttpSession sessionGeneration(HttpServletRequest request) {
-		HttpSession session = request.getSession(false);
-		if(session == null) {
-			throw new ProblemRecomendWebAppException("Please LogIn First!!");
-		}
-		return session;
-	}
-
 	
 	
 }

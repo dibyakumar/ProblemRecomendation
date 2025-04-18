@@ -1,7 +1,5 @@
 package com.problem.practice.entity;
 
-import java.util.List;
-
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 
@@ -18,5 +16,5 @@ public class User {
 	private String emailId;
 	private String userName;
 	private String password;
-	private List<Problem> problems;
+	private String role;
 }
