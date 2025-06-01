@@ -15,6 +15,7 @@ public class ProblemDto {
 	private String link;
 	private Integer review;
 	private LocalDate dueOn;
+	private String status;
 	private String interval;
 	private LocalDate dateOfLastPractice;
 }

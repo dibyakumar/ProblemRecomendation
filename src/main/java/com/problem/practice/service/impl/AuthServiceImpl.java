@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import com.problem.practice.entity.User;
+import com.problem.practice.exception.ServiceException;
 import com.problem.practice.payload.UserDto;
 import com.problem.practice.repository.UserRepository;
 
@@ -26,6 +27,10 @@ public class AuthServiceImpl {
 	}
 
 	public void saveUser(UserDto user) {
+		if(urepo.existsById(user.getEmailId())){
+			throw new ServiceException("User With same Email Id already present !! ",400);
+		}
+		
 		User u = new User(user.getEmailId(),user.getUserName(),passwordEncoder.encode(user.getPassword()),"USER");
 		urepo.save(u);
 	}

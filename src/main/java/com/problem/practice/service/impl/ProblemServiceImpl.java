@@ -74,6 +74,7 @@ public class ProblemServiceImpl {
 				long between = ChronoUnit.DAYS.between(prob.getPracticeDate(), processedDate);
 				if(prob.getInterval() == (int)between || prob.getInterval() < between) {
 					prob.setInterval(0);
+					problemRepo.save(prob);
 				}
 				
 			}
@@ -102,8 +103,6 @@ public class ProblemServiceImpl {
 		Problem problem = scheduler.poll();
 		List<ProblemDto> dto = processProblems(List.of(problem));
 		
-		//update the practice date 
-		problem.setPracticeDate(processedDate);
 		problemRepo.save(problem);
 		return  dto.get(0);
 	}
@@ -123,8 +122,13 @@ public class ProblemServiceImpl {
 		// dont update the review before calculating the interval 
 		problems.get().setReview(review);
 		
+		//update the practice date 
+		problems.get().setPracticeDate(processedDate);
+
 		//update prob
 		problemRepo.save(problems.get());
+		
+		
 		
 		return "Review Updated !!";
 	}
@@ -161,9 +165,14 @@ public class ProblemServiceImpl {
 		List<ProblemDto> dtos = new ArrayList<>();
 		for(Problem prob : problems) {
 				long dueOn = prob.getInterval() -  ChronoUnit.DAYS.between(prob.getPracticeDate(), processedDate);
+				
 				LocalDate dueDate = LocalDate.now().plusDays(dueOn);
+				if(dueOn<=0) {
+					 dueDate = prob.getPracticeDate().plusDays(prob.getInterval());
+				}
+				
 				ProblemDto dto = ProblemDto.builder().id(Integer.parseInt(prob.getProblemId())).link(prob.getProblemLink()).review(prob.getReview())
-						.dateOfLastPractice(prob.getPracticeDate()).dueOn(dueDate).build();
+						.dateOfLastPractice(prob.getPracticeDate()).dueOn(dueDate).status(dueDate.isBefore(LocalDate.now())?"READY":"SCHEDULED").build();
 				dtos.add(dto);
 			
 		}
